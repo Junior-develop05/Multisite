@@ -1,0 +1,122 @@
+import requests
+from urllib.parse import quote_plus
+import socket
+
+
+def check_sql_injection(url):
+    """Простая проверка на наличие уязвимости SQL инъекции."""
+    test_payloads = ["' OR 1=1--", "' UNION SELECT NULL--"]
+
+    for payload in test_payloads:
+        full_url = f"{url}?param={quote_plus(payload)}"
+
+        try:
+            response = requests.get(full_url)
+
+            if "You have an error in your SQL syntax;" in response.text or "Warning:" in response.text:
+                return True
+
+        except Exception as e:
+            print(f"Ошибка при проверке SQLi: {e}")
+
+    return False
+
+
+def check_xss_vulnerability(url):
+    """Проверка на наличие XSS-уязвимости"""
+    test_payloads = [
+        "<script>alert('test')</script>",
+        "<img src=x onerror='alert(\"test\")'>",
+    ]
+
+    for payload in test_payloads:
+        full_url = f"{url}?param={quote_plus(payload)}"
+
+        try:
+            response = requests.get(full_url)
+
+            if payload in response.text:
+                return True
+
+        except Exception as e:
+            print(f"Ошибка при проверке XSS: {e}")
+
+    return False
+
+
+def scan_ports(hostname_or_ip):
+    """Простое сканирование открытых портов."""
+    ports_to_check = [80, 443, 22]
+    open_ports = []
+
+    for port in ports_to_check:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex((hostname_or_ip, port))
+
+        if result == 0:
+            open_ports.append(port)
+
+        sock.close()
+
+    return open_ports
+
+
+def check_http_headers(url):
+    """Проверка основных HTTP-заголовков безопасности."""
+    headers_to_check = {
+        "Strict-Transport-Security": None,
+        "X-Frame-Options": None,
+        "X-XSS-Protection": None,
+        "Content-Security-Policy": None,
+        "Referrer-Policy": None,
+    }
+
+    try:
+        response = requests.head(url)
+
+        for header in headers_to_check.keys():
+            value = response.headers.get(header)
+            headers_to_check[header] = value
+
+    except Exception as e:
+        print(f"Ошибка при проверке HTTP-заголовков: {e}")
+
+    return headers_to_check
+
+
+if __name__ == "__main__":
+    target_url = input("Введите URL вашего сайта для проверки (без http:// или https://): ")
+    target_host = input("Введите IP адрес сервера (если знаете): ") or target_url
+
+    # Выполняем тесты
+    sql_result = check_sql_injection(target_url)
+    xss_result = check_xss_vulnerability(target_url)
+    open_ports = scan_ports(target_host)
+    security_headers = check_http_headers(target_url)
+
+    # Отчет результатов
+    print("\n\nОтчёт:")
+    print(f"\nПроведены проверки сайта: {target_url}\n")
+
+    if sql_result:
+        print("[!] Возможно обнаружена уязвимость SQL injection.")
+    else:
+        print("[ОК] SQL injection не обнаружено.")
+
+    if xss_result:
+        print("[!] Обнаружена возможная уязвимость XSS.")
+    else:
+        print("[ОК] Уязвимость XSS не найдена.")
+
+    if len(open_ports) > 0:
+        print(f"[!] Открытые порты обнаружены: {open_ports}.")
+    else:
+        print("[ОК] Нет опасных открытых портов.")
+
+    print("\nHTTP-заголовки безопасности:")
+    for key, val in security_headers.items():
+        if not val:
+            print(f"[-] Заголовок '{key}' отсутствует!")
+        else:
+            print(f"[+] Заголовок '{key}': {val}")
+
